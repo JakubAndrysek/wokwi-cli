@@ -1,7 +1,6 @@
 import { existsSync, readFileSync } from 'fs';
 import path from 'path';
 import { type APIClient } from '../APIClient.js';
-import type { APIEvent } from '../APITypes.js';
 import { parseConfig } from '../config.js';
 import { loadChips } from '../loadChips.js';
 import { uploadFirmware } from '../uploadFirmware.js';
@@ -103,12 +102,14 @@ export class SimulationManager {
     const firmwareName = await uploadFirmware(this.client, firmwarePath);
 
     if (elfPath) {
-      await this.client.fileUpload('firmware.elf', readFileSync(elfPath));
+      const elfBuffer = readFileSync(elfPath);
+      await this.client.fileUpload('firmware.elf', new Uint8Array(elfBuffer).buffer);
     }
 
     for (const chip of chips) {
       await this.client.fileUpload(`${chip.name}.chip.json`, readFileSync(chip.jsonPath, 'utf-8'));
-      await this.client.fileUpload(`${chip.name}.chip.wasm`, readFileSync(chip.wasmPath));
+      const wasmBuffer = readFileSync(chip.wasmPath);
+      await this.client.fileUpload(`${chip.name}.chip.wasm`, new Uint8Array(wasmBuffer).buffer);
     }
 
     // Start simulation

@@ -1,4 +1,3 @@
-import { Writable } from 'stream';
 import type {
   APICommand,
   APIError,
@@ -11,6 +10,7 @@ import type {
 } from './APITypes.js';
 import { PausePoint, type PausePointParams } from './PausePoint.js';
 import { type ITransport } from './transport/AbstractTransport.js';
+import { byteArrayToBase64 } from './utils/base64.js';
 
 export class APIClient {
   protected transport: ITransport;
@@ -49,7 +49,7 @@ export class APIClient {
     } else {
       return await this.sendCommand('file:upload', {
         name,
-        binary: Buffer.from(content).toString('base64'),
+        binary: byteArrayToBase64(content),
       });
     }
   }
@@ -95,9 +95,12 @@ export class APIClient {
     });
   }
 
-  serialMonitorWritable() {
+  async serialMonitorWritable() {
+    // Dynamic import for Node.js-only API
+    const { Writable } = await import('stream');
+    const { Buffer } = await import('buffer');
     return new Writable({
-      write: (chunk, encoding, callback) => {
+      write: (chunk: any, encoding: BufferEncoding, callback: (error?: Error | null) => void) => {
         if (typeof chunk === 'string') {
           chunk = Buffer.from(chunk, encoding);
         }

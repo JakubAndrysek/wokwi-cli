@@ -1,5 +1,5 @@
 import { WebSocket } from 'ws';
-import { readVersion } from '../readVersion.js';
+import { sha, version } from '../version.js';
 import { type ITransport } from './AbstractTransport.js';
 
 const retryDelays = [1000, 2000, 5000, 10000, 20000];
@@ -23,7 +23,6 @@ export class WebSocketTransport implements ITransport {
 
   /** Create a new WebSocket instance with appropriate headers */
   private createSocket(token: string, server: string): WebSocket {
-    const { sha, version } = readVersion();
     return new WebSocket(server, {
       headers: {
         Authorization: `Bearer ${token}`,
