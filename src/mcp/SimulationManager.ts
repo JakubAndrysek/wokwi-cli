@@ -1,10 +1,11 @@
 import { existsSync, readFileSync } from 'fs';
 import path from 'path';
-import { APIClient } from '../APIClient.js';
+import { type APIClient } from '../APIClient.js';
 import type { APIEvent } from '../APITypes.js';
 import { parseConfig } from '../config.js';
 import { loadChips } from '../loadChips.js';
 import { uploadFirmware } from '../uploadFirmware.js';
+import { WebSocketAPIClient } from '../transport/WebSocketAPIClient.js';
 
 export interface SimulationStatus {
   running: boolean;
@@ -31,7 +32,7 @@ export class SimulationManager {
       return;
     }
 
-    this.client = new APIClient(this.token);
+    this.client = new WebSocketAPIClient(this.token);
 
     this.client.onConnected = (hello) => {
       this.isConnected = true;
@@ -45,13 +46,11 @@ export class SimulationManager {
       throw new Error(`API Error: ${error.message}`);
     };
 
-    this.client.onEvent = (event: APIEvent) => {
-      if (event.event === 'serial-monitor:data') {
-        const bytes = (event as any).payload.bytes;
-        const text = bytes.map((byte: number) => String.fromCharCode(byte)).join('');
-        this.addToSerialBuffer(text);
-      }
-    };
+    this.client.listen('serial-monitor:data', (event) => {
+      const bytes = (event as any).payload.bytes;
+      const text = bytes.map((byte: number) => String.fromCharCode(byte)).join('');
+      this.addToSerialBuffer(text);
+    });
 
     await this.client.connected;
   }

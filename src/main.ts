@@ -3,7 +3,6 @@ import chalkTemplate from 'chalk-template';
 import { createWriteStream, existsSync, readFileSync, writeFileSync } from 'fs';
 import path, { join } from 'path';
 import YAML from 'yaml';
-import { APIClient } from './APIClient.js';
 import type { APIEvent, ChipsLogPayload, SerialMonitorDataPayload } from './APITypes.js';
 import { ExpectEngine } from './ExpectEngine.js';
 import { SimulationTimeoutError } from './SimulationTimeoutError.js';
@@ -22,6 +21,7 @@ import { TakeScreenshotCommand } from './scenario/TakeScreenshotCommand.js';
 import { WaitSerialCommand } from './scenario/WaitSerialCommand.js';
 import { WriteSerialCommand } from './scenario/WriteSerialCommand.js';
 import { uploadFirmware } from './uploadFirmware.js';
+import { WebSocketAPIClient } from './transport/WebSocketAPIClient.js';
 
 const millis = 1_000_000;
 
@@ -272,7 +272,7 @@ async function main() {
     });
   }
 
-  const client = new APIClient(token);
+  const client = new WebSocketAPIClient(token);
   client.onConnected = (hello) => {
     if (!quiet) {
       console.log(`Connected to Wokwi Simulation API ${hello.appVersion}`);
