@@ -10,7 +10,7 @@ import type {
 } from './APITypes.js';
 import { PausePoint, type PausePointParams } from './PausePoint.js';
 import { type ITransport } from './transport/AbstractTransport.js';
-import { byteArrayToBase64 } from './utils/base64.js';
+import { base64ToByteArray, byteArrayToBase64 } from './utils/base64.js';
 
 export class APIClient {
   protected transport: ITransport;
@@ -51,6 +51,17 @@ export class APIClient {
         name,
         binary: byteArrayToBase64(content),
       });
+    }
+  }
+
+  async fileDownload(name: string): Promise<string | Uint8Array> {
+    const result = await this.sendCommand<{ text?: string; binary?: string }>('file:download', { name });
+    if (typeof result.text === 'string') {
+      return result.text;
+    } else if (typeof result.binary === 'string') {
+      return base64ToByteArray(result.binary);
+    } else {
+      throw new Error('Invalid file download response');
     }
   }
 
