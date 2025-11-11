@@ -1,0 +1,118 @@
+name: Integration Tests
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  discover-tests:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Clone test repository
+        run: |
+          if [ ! -d "wokwi-part-tests" ]; then
+            git clone --depth 1 https://github.com/wokwi/wokwi-part-tests.git wokwi-part-tests
+          fi
+      
+      - name: Discover test files
+        id: set-matrix
+        run: |
+          TESTS=$(find wokwi-part-tests -name "*test.yaml" -type f | sort | while read -r test_file; do
+            rel_path="${test_file#wokwi-part-tests/}"
+            test_path=$(dirname "$rel_path")
+            scenario_file=$(basename "$test_file")
+            test_name=$(basename "$test_path")
+            echo "{\"name\":\"$test_name\",\"path\":\"$test_path\",\"scenario\":\"$scenario_file\"}"
+          done | jq -s -c '.')
+          echo "matrix=$TESTS" >> $GITHUB_OUTPUT
+          echo "Found $(echo "$TESTS" | jq 'length') tests"
+          echo "$TESTS" | jq -r '.[] | "\(.name): \(.path) -> \(.scenario)"'
+
+  test:
+    needs: discover-tests
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        test: ${{ fromJson(needs.discover-tests.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+      
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'pnpm'
+      
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      
+      - name: Build packages
+        run: pnpm run build
+      
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            .venv
+          key: platformio-${{ runner.os }}-v1
+          restore-keys: |
+            platformio-${{ runner.os }}-
+      
+      - name: Install PlatformIO
+        run: |
+          if ! command -v pio &> /dev/null; then
+            if [ ! -d ".venv" ]; then
+              python3 -m venv .venv
+            fi
+            source .venv/bin/activate
+            python3 -m pip install --upgrade pip --quiet
+            pip install platformio --quiet
+          else
+            echo "PlatformIO already installed"
+          fi
+      
+      - name: Clone test repository
+        run: |
+          if [ ! -d "wokwi-part-tests" ]; then
+            git clone --depth 1 https://github.com/wokwi/wokwi-part-tests.git wokwi-part-tests
+          fi
+      
+      - name: Build with PlatformIO
+        working-directory: wokwi-part-tests/${{ matrix.test.path }}
+        run: |
+          VENV_PATH="${{ github.workspace }}/.venv"
+          if [ -d "$VENV_PATH" ]; then
+            source "$VENV_PATH/bin/activate" && pio run
+          elif command -v pio &> /dev/null; then
+            pio run
+          else
+            echo "ERROR: PlatformIO not found and venv not available"
+            exit 1
+          fi
+      
+      - name: Run Wokwi CLI test
+        working-directory: .
+        env:
+          WOKWI_CLI_TOKEN: ${{ secrets.WOKWI_CLI_TOKEN }}
+        run: |
+          TEST_DIR="wokwi-part-tests/${{ matrix.test.path }}"
+          node packages/wokwi-cli/dist/cli.cjs "$TEST_DIR" --scenario ${{ matrix.test.scenario }} --timeout 20000 --serial-log-file "$TEST_DIR/serial-${{ matrix.test.name }}.log"
+      
+      - name: Upload serial log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: serial-log-${{ matrix.test.name }}
+          path: wokwi-part-tests/${{ matrix.test.path }}/serial-${{ matrix.test.name }}.log
+          retention-days: 7
